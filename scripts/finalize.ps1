@@ -33,18 +33,22 @@ Copy-Item "$originalSource/zed-source/script/licenses/template.md.hbs" "$package
 Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/terminal/v1.25.1912.0/LICENSE' -OutFile "$package/LICENSE-ConPTY.txt"
 & "$package/Zed.exe" --version
 & "$package/bin/zed.exe" --version
-$metadata = @{ binarySourceCommit=$buildCommit; packagingSourceCommit=$env:GITHUB_SHA; originalArchiveSha256=$checksum; nativeDesktopLaunch='NOT RUN'; physicalPhoneRoundtrip='NOT RUN' }
+$expandedBytes = (Get-ChildItem -LiteralPath $package -Recurse -File | Measure-Object Length -Sum).Sum
+$metadata = @{ binarySourceCommit=$buildCommit; packagingSourceCommit=$env:GITHUB_SHA; originalArchiveSha256=$checksum; approximateExpandedBytes=$expandedBytes; nativeDesktopLaunch='NOT RUN'; physicalPhoneRoundtrip='NOT RUN' }
 $metadata | ConvertTo-Json | Set-Content "$package/build-validation.json"
 $finalArchive = Join-Path $repositoryRoot 'work/zedlink-windows-x64.zip'
 Compress-Archive -Path "$package/*" -DestinationPath $finalArchive
 if ((Get-Item $finalArchive).Length -ge 2GB) { throw 'Package exceeds release asset limit.' }
+$downloadMiB = [math]::Round((Get-Item $finalArchive).Length / 1MB, 1)
+$expandedMiB = [math]::Round($expandedBytes / 1MB, 1)
 "$((Get-FileHash $finalArchive -Algorithm SHA256).Hash.ToLowerInvariant())  zedlink-windows-x64.zip" | Set-Content "$finalArchive.sha256"
 $notes = Join-Path $repositoryRoot 'work/final-notes.md'
 @"
 Experimental Windows package with native Zed, gateway, isolated launcher, dependency notices and SHA-256 checksum.
+Download: $downloadMiB MiB. Expanded files: approximately $expandedMiB MiB before runtime caches.
 Native binaries are unchanged from $($env:BUILD_TAG), built from $buildCommit. Packaging source: $env:GITHUB_SHA.
 Transport/protocol/gateway tests and native compilation passed in the original build. Executable version checks ran during packaging.
 Interactive desktop launch and physical-phone shared-thread behavior still require verification. Do not replace a stock Zed installation.
 All build and packaging work ran on free standard Windows runners for this public repository. No local build dependencies are required.
 "@ | Set-Content $notes
-gh release create "windows-$env:GITHUB_RUN_ID" $finalArchive "$finalArchive.sha256" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title 'ZedLink Windows x64 (experimental)' --notes-file $notes
+gh release create "windows-$env:GITHUB_RUN_ID" $finalArchive "$finalArchive.sha256" "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title 'ZedLink Windows x64 (experimental)' --notes-file $notes
