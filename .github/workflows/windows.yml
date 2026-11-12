@@ -1,0 +1,72 @@
+name: Windows build (free public runner)
+on:
+  workflow_dispatch:
+    inputs:
+      build_zed:
+        description: Also compile the patched Zed desktop application
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: windows-manual
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.repository == 'mark137933/zedlink-windows' && github.event.repository.private == false
+    runs-on: windows-2022
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify public repository and prepare pinned sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $visibility = gh api repos/$env:GITHUB_REPOSITORY --jq .visibility
+          if ($visibility -ne 'public') { throw 'Only free public-repository builds are allowed.' }
+          ./scripts/prepare.ps1
+      - name: Prepare standard runner toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $drive = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -in @('C','D') } | Sort-Object Free -Descending | Select-Object -First 1
+          if ($drive.Free -lt 25GB) { throw 'Insufficient free space on the free runner. No paid fallback.' }
+          $buildRoot = Join-Path $drive.Root 'zedlink-ci'
+          New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+          "CARGO_HOME=$buildRoot/cargo" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=$buildRoot/target" >> $env:GITHUB_ENV
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+      - name: Test local transport and compile gateway
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo +1.98.1 test --manifest-path work/source/local-ipc/Cargo.toml
+          cargo +1.98.1 test --manifest-path work/source/gateway/Cargo.toml
+          cargo +1.98.1 build --release --manifest-path work/source/gateway/Cargo.toml
+      - name: Compile patched Zed
+        if: inputs.build_zed
+        shell: pwsh
+        working-directory: work/source/zed-source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          cargo +1.98.1 --config .cargo/bundle-config.toml build --release --package zed --package cli --package auto_update_helper --target x86_64-pc-windows-msvc
+      - name: Package and publish successful build
+        shell: pwsh
+        env:
+          BUILD_ZED: ${{ inputs.build_zed }}
+        run: ./scripts/package.ps1
+

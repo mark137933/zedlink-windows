@@ -1,0 +1,300 @@
+diff --git a/crates/agent_ui/Cargo.toml b/crates/agent_ui/Cargo.toml
+index 51217f5..0522b2f 100644
+--- a/crates/agent_ui/Cargo.toml
++++ b/crates/agent_ui/Cargo.toml
+@@ -26,6 +26,7 @@ audio = ["dep:audio"]
+ unit-eval = []
+ 
+ [dependencies]
++zedlink-local-ipc = { path = "../../../local-ipc" }
+ acp_thread.workspace = true
+ action_log.workspace = true
+ agent-client-protocol.workspace = true
+diff --git a/crates/agent_ui/src/agent_ui.rs b/crates/agent_ui/src/agent_ui.rs
+index 99d3a41..b720885 100644
+--- a/crates/agent_ui/src/agent_ui.rs
++++ b/crates/agent_ui/src/agent_ui.rs
+@@ -37,7 +37,7 @@ pub mod thread_worktree_archive;
+ pub mod threads_archive_view;
+ mod ui;
+ mod unicode_confusables;
+-#[cfg(unix)]
++#[cfg(any(unix, windows))]
+ mod zedlink_probe;
+ 
+ use std::rc::Rc;
+@@ -712,7 +712,7 @@ pub fn init(
+         init_language_model_settings(cx);
+     }
+     agent_panel::init(cx);
+-    #[cfg(unix)]
++    #[cfg(any(unix, windows))]
+     if !is_eval {
+         zedlink_probe::init(cx);
+     }
+diff --git a/crates/agent_ui/src/completion_provider.rs b/crates/agent_ui/src/completion_provider.rs
+index 9136087..cf60a0a 100644
+--- a/crates/agent_ui/src/completion_provider.rs
++++ b/crates/agent_ui/src/completion_provider.rs
+@@ -199,7 +199,7 @@ impl PromptContextAction {
+ pub enum PromptLocalCommand {
+     ThumbsUp,
+     ThumbsDown,
+-    #[cfg(unix)]
++    #[cfg(any(unix, windows))]
+     RemoteControl,
+ }
+ 
+@@ -208,7 +208,7 @@ impl PromptLocalCommand {
+         match self {
+             Self::ThumbsUp => "helpful",
+             Self::ThumbsDown => "not-helpful",
+-            #[cfg(unix)]
++            #[cfg(any(unix, windows))]
+             Self::RemoteControl => "remote-control",
+         }
+     }
+@@ -217,7 +217,7 @@ impl PromptLocalCommand {
+         match self {
+             Self::ThumbsUp => "Positive Feedback",
+             Self::ThumbsDown => "Negative Feedback",
+-            #[cfg(unix)]
++            #[cfg(any(unix, windows))]
+             Self::RemoteControl => "Remote Control",
+         }
+     }
+@@ -230,7 +230,7 @@ impl PromptLocalCommand {
+             Self::ThumbsDown => {
+                 "Rate this response as not helpful. Sends the current conversation to the Zed team."
+             }
+-            #[cfg(unix)]
++            #[cfg(any(unix, windows))]
+             Self::RemoteControl => "Expose or stop exposing this native Agent thread to ZedLink.",
+         }
+     }
+@@ -239,7 +239,7 @@ impl PromptLocalCommand {
+         match self {
+             Self::ThumbsUp => IconName::ThumbsUp,
+             Self::ThumbsDown => IconName::ThumbsDown,
+-            #[cfg(unix)]
++            #[cfg(any(unix, windows))]
+             Self::RemoteControl => IconName::Link,
+         }
+     }
+diff --git a/crates/agent_ui/src/conversation_view/thread_view.rs b/crates/agent_ui/src/conversation_view/thread_view.rs
+index bb9a70a..60f3b40 100644
+--- a/crates/agent_ui/src/conversation_view/thread_view.rs
++++ b/crates/agent_ui/src/conversation_view/thread_view.rs
+@@ -1498,7 +1498,7 @@ impl ThreadView {
+             PromptLocalCommand::ThumbsDown => {
+                 self.handle_feedback_click(ThreadFeedback::Negative, window, cx);
+             }
+-            #[cfg(unix)]
++            #[cfg(any(unix, windows))]
+             PromptLocalCommand::RemoteControl => {
+                 if self.parent_session_id.is_some() {
+                     return;
+@@ -8383,7 +8383,7 @@ impl ThreadView {
+             commands.push(PromptLocalCommand::ThumbsDown);
+         }
+ 
+-        #[cfg(unix)]
++        #[cfg(any(unix, windows))]
+         if self.parent_session_id.is_none() && crate::zedlink_probe::is_available(cx) {
+             commands.push(PromptLocalCommand::RemoteControl);
+         }
+diff --git a/crates/agent_ui/src/message_editor.rs b/crates/agent_ui/src/message_editor.rs
+index e8826ef..1cee594 100644
+--- a/crates/agent_ui/src/message_editor.rs
++++ b/crates/agent_ui/src/message_editor.rs
+@@ -3106,7 +3106,7 @@ mod tests {
+             &[PromptLocalCommand::ThumbsDown],
+         );
+ 
+-        #[cfg(unix)]
++        #[cfg(any(unix, windows))]
+         {
+             message_editor.read_with(&cx, |message_editor, _| {
+                 message_editor.set_local_commands(vec![PromptLocalCommand::RemoteControl]);
+diff --git a/crates/agent_ui/src/zedlink_probe.rs b/crates/agent_ui/src/zedlink_probe.rs
+index 6259194..2d2a342 100644
+--- a/crates/agent_ui/src/zedlink_probe.rs
++++ b/crates/agent_ui/src/zedlink_probe.rs
+@@ -1,12 +1,8 @@
+ use std::{
+     cell::{Cell, RefCell},
+     collections::{HashMap, HashSet, VecDeque},
+-    fs::{self, DirBuilder, Permissions},
++    fs,
+     io::{BufRead, BufReader, Read, Write},
+-    os::unix::{
+-        fs::{DirBuilderExt, FileTypeExt, PermissionsExt},
+-        net::{UnixListener, UnixStream},
+-    },
+     path::{Component, Path, PathBuf},
+     rc::Rc,
+     sync::mpsc,
+@@ -41,6 +37,7 @@ use terminal::TaskStatus;
+ use terminal_view::{TerminalView, terminal_panel::TerminalPanel};
+ use theme::ActiveTheme;
+ use util::rel_path::RelPath;
++use zedlink_local_ipc::{self as local_ipc, blocking::{Listener, Stream}};
+ 
+ use crate::agent_panel::{AgentPanel, CreateThreadOptions};
+ use crate::conversation_view::{ConversationView, ThreadView};
+@@ -368,7 +365,7 @@ pub fn init(cx: &mut App) {
+         .clone();
+     let permissions = ProbePermissions::from_settings(cx);
+     let gateway_manager = settings.as_ref().and_then(|settings| {
+-        if !settings.start_gateway_on_launch.unwrap_or(true) {
++        if !settings.start_gateway_on_launch.unwrap_or(cfg!(unix)) {
+             return None;
+         }
+         settings
+@@ -407,34 +404,16 @@ pub fn init(cx: &mut App) {
+         return;
+     }
+ 
+-    let setup = (|| -> Result<(UnixListener, ProbeState)> {
++    let setup = (|| -> Result<(Listener, ProbeState)> {
+         let project_root = fs::canonicalize(project_root).context("project root unavailable")?;
+         if !project_root.is_dir() {
+             return Err(anyhow!("project root is not a directory"));
+         }
+ 
+-        let mut builder = DirBuilder::new();
+-        builder.mode(0o700);
+-        match builder.create(&directory) {
+-            Ok(()) => {}
+-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+-                let metadata = fs::symlink_metadata(&directory)?;
+-                if !metadata.file_type().is_dir() || metadata.permissions().mode() & 0o077 != 0 {
+-                    return Err(anyhow!("existing probe directory is not private"));
+-                }
+-            }
+-            Err(error) => return Err(error).context("private socket directory unavailable"),
+-        }
++        local_ipc::create_private_directory(&directory)
++            .context("private probe directory unavailable")?;
+         let socket = directory.join("zedlink.sock");
+-        if let Ok(metadata) = fs::symlink_metadata(&socket) {
+-            if !metadata.file_type().is_socket() || UnixStream::connect(&socket).is_ok() {
+-                return Err(anyhow!("probe socket path is occupied"));
+-            }
+-            fs::remove_file(&socket).context("stale probe socket unavailable")?;
+-        }
+-        let listener = UnixListener::bind(&socket).context("socket unavailable")?;
+-        fs::set_permissions(&socket, Permissions::from_mode(0o600))
+-            .context("socket permissions unavailable")?;
++        let listener = Listener::bind(&socket).context("local probe endpoint unavailable")?;
+         Ok((
+             listener,
+             ProbeState {
+@@ -457,7 +436,7 @@ pub fn init(cx: &mut App) {
+         ))
+     })();
+ 
+-    let Ok((listener, state)) = setup else {
++    let Ok((mut listener, state)) = setup else {
+         log::warn!("ZedLink local probe could not start");
+         return;
+     };
+@@ -494,8 +473,14 @@ pub fn init(cx: &mut App) {
+             log::warn!("ZedLink gateway manager path is unavailable");
+         } else {
+             cx.background_spawn(async move {
+-                match smol::process::Command::new("python3")
+-                    .arg(manager_path)
++                let mut command = if cfg!(windows) {
++                    let mut command = smol::process::Command::new("powershell.exe");
++                    command.args(["-NoProfile", "-NonInteractive", "-File"]);
++                    command
++                } else {
++                    smol::process::Command::new("python3")
++                };
++                match command.arg(manager_path)
+                     .arg("start-gateway-detached")
+                     .output()
+                     .await
+@@ -822,7 +807,7 @@ pub(crate) fn is_available(cx: &App) -> bool {
+ }
+ 
+ fn handle_stream(
+-    mut stream: UnixStream,
++    mut stream: Stream,
+     sender: &async_channel::Sender<ProbeCommand>,
+ ) -> Result<()> {
+     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+@@ -1321,7 +1306,7 @@ fn create_thread(request: &ProbeRequest, state: &ProbeState, cx: &mut App) -> Va
+             let matches_project = project
+                 .read(cx)
+                 .visible_worktrees(cx)
+-                .any(|worktree| worktree.read(cx).abs_path().as_ref() == state.project_root);
++                .any(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), &state.project_root));
+             matches_project
+                 .then(|| {
+                     workspace
+@@ -1415,7 +1400,7 @@ fn create_thread_options(request: &ProbeRequest, state: &ProbeState, cx: &mut Ap
+             let matches_project = project
+                 .read(cx)
+                 .visible_worktrees(cx)
+-                .any(|worktree| worktree.read(cx).abs_path().as_ref() == state.project_root);
++                .any(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), &state.project_root));
+             matches_project
+                 .then(|| {
+                     workspace
+@@ -2896,7 +2881,7 @@ fn exposed_worktree(
+     project
+         .read(cx)
+         .visible_worktrees(cx)
+-        .find(|worktree| worktree.read(cx).abs_path().as_ref() == state.project_root)
++        .find(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), &state.project_root))
+         .ok_or("INSTANCE_UNAVAILABLE")
+ }
+ 
+@@ -4782,7 +4767,7 @@ fn configured_tasks(
+         let project = project.read(cx);
+         let Some(worktree) = project
+             .visible_worktrees(cx)
+-            .find(|worktree| worktree.read(cx).abs_path().as_ref() == project_root)
++            .find(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), project_root))
+         else {
+             continue;
+         };
+@@ -4827,7 +4812,7 @@ fn configured_debug_scenarios(
+         let project = project.read(cx);
+         let Some(worktree) = project
+             .visible_worktrees(cx)
+-            .find(|worktree| worktree.read(cx).abs_path().as_ref() == project_root)
++            .find(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), project_root))
+         else {
+             continue;
+         };
+@@ -4898,7 +4883,7 @@ fn loaded_project_workspaces(project_root: &Path, cx: &App) -> Vec<Entity<worksp
+                 .project()
+                 .read(cx)
+                 .visible_worktrees(cx)
+-                .any(|worktree| worktree.read(cx).abs_path().as_ref() == project_root)
++                .any(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), project_root))
+         })
+         .collect()
+ }
+@@ -4994,12 +4979,17 @@ fn loaded_thread_views(
+     threads
+ }
+ 
++fn matches_project_root(path: &Path, canonical_root: &Path) -> bool {
++    // Windows canonical paths carry a verbatim prefix that Zed worktree paths may omit.
++    fs::canonicalize(path).is_ok_and(|path| path == canonical_root)
++}
++
+ fn thread_belongs_to_project(thread: &Entity<AcpThread>, project_root: &Path, cx: &App) -> bool {
+     let project = thread.read(cx).project().clone();
+     project
+         .read(cx)
+         .visible_worktrees(cx)
+-        .any(|worktree| worktree.read(cx).abs_path().as_ref() == project_root)
++        .any(|worktree| matches_project_root(worktree.read(cx).abs_path().as_ref(), project_root))
+ }
+ 
+ fn success(request_id: &str, result: Value) -> Value {
