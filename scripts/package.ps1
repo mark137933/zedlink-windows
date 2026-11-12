@@ -8,6 +8,7 @@ Copy-Item "$env:CARGO_TARGET_DIR/release/zedlink-gateway.exe" $package
 Copy-Item 'README.md' "$package/README.md"
 Copy-Item 'LICENSE' "$package/LICENSE-zedlink"
 Copy-Item 'THIRD_PARTY.md' "$package/THIRD_PARTY.md"
+Copy-Item 'windows/ZedLink.ps1' "$package/ZedLink.ps1"
 if ($env:BUILD_ZED -eq 'true') {
     $native = "$env:CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release"
     Copy-Item "$native/zed.exe" "$package/Zed.exe"

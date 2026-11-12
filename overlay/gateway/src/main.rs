@@ -2288,6 +2288,41 @@ async fn event_stream(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn probe_roundtrip_validates_response_identity_and_reconnects() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let directory = temporary.path().join("state");
+        let probe_directory = temporary.path().join("probe");
+        local_ipc::create_private_directory(&directory)?;
+        local_ipc::create_private_directory(&probe_directory)?;
+        let endpoint = probe_directory.join("probe.sock");
+        let mut listener = ipc::Listener::bind(&endpoint)?;
+        let gateway = Gateway::load(directory, vec![ProbeTarget {
+            id: "default".into(), label: "Disposable fixture".into(), probe: endpoint,
+        }], Vec::new(), Vec::new())?;
+        let server = tokio::spawn(async move {
+            for id in ["correct", "wrong"] {
+                let stream = listener.accept().await?;
+                let mut reader = BufReader::new(stream);
+                let mut request = String::new();
+                reader.read_line(&mut request).await?;
+                let request: Value = serde_json::from_str(&request)?;
+                assert_eq!(request["method"], "instance.info");
+                let response = json!({"version": 1, "request_id": id, "result": {"fixture": true}});
+                let mut stream = reader.into_inner();
+                stream.write_all(serde_json::to_string(&response)?.as_bytes()).await?;
+                stream.write_all(b"\n").await?;
+            }
+            anyhow::Ok(())
+        });
+        let request = json!({"version": 1, "request_id": "correct", "method": "instance.info", "params": {}});
+        let response = gateway.probe(None, &request).await?;
+        assert_eq!(response["result"]["fixture"], true);
+        assert!(gateway.probe(None, &request).await.is_err());
+        server.await??;
+        Ok(())
+    }
+
     #[test]
     fn creates_stable_vapid_key_pair() {
         let private_key = new_vapid_private_key();

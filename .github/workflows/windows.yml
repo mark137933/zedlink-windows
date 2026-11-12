@@ -48,12 +48,28 @@ jobs:
           "CARGO_HOME=$buildRoot/cargo" >> $env:GITHUB_ENV
           "CARGO_TARGET_DIR=$buildRoot/target" >> $env:GITHUB_ENV
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt
-      - name: Test local transport and compile gateway
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $visualStudio = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $visualStudio) { throw 'Standard runner has no MSVC toolchain.' }
+          & "$visualStudio/Common7/Tools/Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          foreach ($name in @('PATH','INCLUDE','LIB','LIBPATH','VCToolsInstallDir','VSINSTALLDIR','WindowsSdkDir','WindowsSDKVersion')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($value) { "$name=$value" >> $env:GITHUB_ENV }
+          }
+          $perl = (Get-Command perl.exe -ErrorAction Stop).Source
+          "PERL=$perl" >> $env:GITHUB_ENV
+      - name: Test local transport and protocol
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           cargo +1.98.1 test --manifest-path work/source/local-ipc/Cargo.toml
+          cargo +1.98.1 test --manifest-path work/source/protocol-core/Cargo.toml
+      - name: Test and compile gateway
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           cargo +1.98.1 test --manifest-path work/source/gateway/Cargo.toml
           cargo +1.98.1 build --release --manifest-path work/source/gateway/Cargo.toml
       - name: Compile patched Zed
@@ -69,4 +85,3 @@ jobs:
         env:
           BUILD_ZED: ${{ inputs.build_zed }}
         run: ./scripts/package.ps1
-
