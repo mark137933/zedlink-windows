@@ -9,6 +9,7 @@ Copy-Item 'README.md' "$package/README.md"
 Copy-Item 'LICENSE' "$package/LICENSE-zedlink"
 Copy-Item 'THIRD_PARTY.md' "$package/THIRD_PARTY.md"
 Copy-Item 'windows/ZedLink.ps1' "$package/ZedLink.ps1"
+$manifests = @('work/source/gateway/Cargo.toml')
 if ($env:BUILD_ZED -eq 'true') {
     $native = "$env:CARGO_TARGET_DIR/x86_64-pc-windows-msvc/release"
     Copy-Item "$native/zed.exe" "$package/Zed.exe"
@@ -17,6 +18,10 @@ if ($env:BUILD_ZED -eq 'true') {
     Copy-Item "$native/auto_update_helper.exe" "$package/tools/auto_update_helper.exe"
     Copy-Item 'work/source/zed-source/LICENSE-GPL' "$package/LICENSE-Zed-GPL"
     Copy-Item 'work/source/zed-source/LICENSE-APACHE' "$package/LICENSE-Zed-APACHE"
+    $manifests += 'work/source/zed-source/Cargo.toml'
+    Copy-Item 'work/source/zed-source/script/licenses/template.md.hbs' "$package/UPSTREAM-ADDITIONAL-NOTICES.txt"
+    Copy-Item 'work/source/zed-source/assets/themes/LICENSES' "$package/THEME-LICENSES.txt"
+    Copy-Item 'work/source/zed-source/assets/icons/LICENSES' "$package/ICON-LICENSES.txt"
     Invoke-WebRequest 'https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AGS_SDK/zip/refs/tags/v6.3.0' -OutFile 'work/ags.zip'
     Expand-Archive 'work/ags.zip' 'work/ags'
     Copy-Item 'work/ags/AGS_SDK-6.3.0/ags_lib/lib/amd_ags_x64.dll' $package
@@ -27,7 +32,9 @@ if ($env:BUILD_ZED -eq 'true') {
     Copy-Item 'work/conpty/build/native/runtimes/x64/OpenConsole.exe' "$package/x64/OpenConsole.exe"
     Copy-Item 'work/conpty/build/native/runtimes/arm64/OpenConsole.exe' "$package/arm64/OpenConsole.exe"
     Copy-Item 'work/conpty/runtimes/win-x64/native/conpty.dll' $package
+    Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/terminal/v1.25.1912.0/LICENSE' -OutFile "$package/LICENSE-ConPTY.txt"
 }
+python scripts/collect-licenses.py "$package/dependency-notices" @manifests
 $label = if ($env:BUILD_ZED -eq 'true') { 'zedlink-windows-x64' } else { 'zedlink-gateway-windows-x64' }
 $archive = Join-Path $repositoryRoot "work/$label.zip"
 Compress-Archive -Path "$package/*" -DestinationPath $archive

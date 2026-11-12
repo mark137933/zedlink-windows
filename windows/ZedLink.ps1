@@ -37,6 +37,19 @@ function New-PrivateDirectory([string]$Path) {
 
 function Write-Json([string]$Path, $Value) {
     [IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth 12), $utf8)
+    Set-PrivateFile $Path
+}
+
+function Set-PrivateFile([string]$Path) {
+    $owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetOwner($owner)
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($identity in @($owner, $system)) {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow')))
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
 function Test-GatewayReady {
@@ -77,6 +90,8 @@ if ($Action -eq 'Setup') {
     # Write new files into the protected directory so source ACLs are not copied.
     [IO.File]::WriteAllBytes((Join-Path $StateRoot 'tls/cert.pem'), [IO.File]::ReadAllBytes($certificate))
     [IO.File]::WriteAllBytes((Join-Path $StateRoot 'tls/key.pem'), [IO.File]::ReadAllBytes($key))
+    Set-PrivateFile (Join-Path $StateRoot 'tls/cert.pem')
+    Set-PrivateFile (Join-Path $StateRoot 'tls/key.pem')
     Write-Json $listeners @{ version=1; listeners=@(@{ id='primary'; bind=$BindAddress; url=$origin.GetLeftPart([UriPartial]::Authority); cert=(Join-Path $StateRoot 'tls/cert.pem'); key=(Join-Path $StateRoot 'tls/key.pem') }) }
     Write-Json $configuration @{ project=$project; origin=$origin.GetLeftPart([UriPartial]::Authority) }
     Write-Json (Join-Path $profile 'config/settings.json') @{ auto_update=$false; telemetry=@{ diagnostics=$false; metrics=$false }; zedlink=@{ enabled=$true; state_directory=$StateRoot; project_root=$project; start_gateway_on_launch=$false; allow_terminal_read=$false; allow_terminal_input=$false; allow_task_start=$false; allow_debugger_start=$false } }

@@ -1,0 +1,30 @@
+name: Finalize an existing Windows build (free public runner)
+on:
+  workflow_dispatch:
+    inputs:
+      build_tag:
+        description: Successful experimental build release tag
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: windows-package
+  cancel-in-progress: false
+jobs:
+  finalize:
+    if: github.repository == 'mark137933/zedlink-windows' && github.event.repository.private == false
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify and finalize existing binaries
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_TAG: ${{ inputs.build_tag }}
+        run: ./scripts/finalize.ps1

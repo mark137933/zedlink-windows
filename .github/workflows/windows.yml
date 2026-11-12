@@ -23,13 +23,14 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_RELEASE_DEBUG: '0'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Verify public repository and prepare pinned sources
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
@@ -70,7 +71,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          cargo +1.98.1 test --manifest-path work/source/gateway/Cargo.toml
+          cargo +1.98.1 test --release --manifest-path work/source/gateway/Cargo.toml
           cargo +1.98.1 build --release --manifest-path work/source/gateway/Cargo.toml
       - name: Compile patched Zed
         if: inputs.build_zed
@@ -84,4 +85,5 @@ jobs:
         shell: pwsh
         env:
           BUILD_ZED: ${{ inputs.build_zed }}
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/package.ps1
