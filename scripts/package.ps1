@@ -64,4 +64,7 @@ Physical-phone control of a native Zed conversation is not yet validated.
 Source revisions and reproducible patch: README.md and patches/zed-windows.patch at $env:GITHUB_SHA.
 Standard public Windows runner; no Actions artifacts or caches.
 "@ | Set-Content $notes
-gh release create "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" $archive $shaFile "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "$label (experimental)" --notes-file $notes
+$tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+if ((gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha) -ne $env:GITHUB_SHA) { throw 'Release tag does not match the compiled source.' }
+gh release upload $tag $archive $shaFile "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY
+gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease --title "$label (experimental)" --notes-file $notes

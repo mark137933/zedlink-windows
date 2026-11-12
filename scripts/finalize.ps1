@@ -4,6 +4,7 @@ $repositoryRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $repositoryRoot
 if ($env:BUILD_TAG -notmatch '^build-[0-9]+-[0-9]+$') { throw 'Expected a build release tag.' }
 if ((gh api repos/$env:GITHUB_REPOSITORY --jq .visibility) -ne 'public') { throw 'Public repository required.' }
+./scripts/prepare-release.ps1 -Tag "windows-$env:GITHUB_RUN_ID"
 $buildCommit = gh release view $env:BUILD_TAG --repo $env:GITHUB_REPOSITORY --json targetCommitish --jq .targetCommitish
 if ($buildCommit -notmatch '^[0-9a-f]{40}$') { throw 'Expected an exact source commit.' }
 New-Item -ItemType Directory -Path 'work/download','work/original' -Force | Out-Null
@@ -54,4 +55,7 @@ Transport/protocol/gateway tests and native compilation passed in the original b
 Interactive desktop launch and physical-phone shared-thread behavior still require verification. Do not replace a stock Zed installation.
 All build and packaging work ran on free standard Windows runners for this public repository. No local build dependencies are required.
 "@ | Set-Content $notes
-gh release create "windows-$env:GITHUB_RUN_ID" $finalArchive "$finalArchive.sha256" "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title 'ZedLink Windows x64 (experimental)' --notes-file $notes
+$tag = "windows-$env:GITHUB_RUN_ID"
+if ((gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha) -ne $env:GITHUB_SHA) { throw 'Release tag does not match the packaging source.' }
+gh release upload $tag $finalArchive "$finalArchive.sha256" "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY
+gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease --title 'ZedLink Windows x64 (experimental)' --notes-file $notes

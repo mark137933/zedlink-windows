@@ -36,6 +36,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           $visibility = gh api repos/$env:GITHUB_REPOSITORY --jq .visibility
           if ($visibility -ne 'public') { throw 'Only free public-repository builds are allowed.' }
+          ./scripts/prepare-release.ps1
           ./scripts/prepare.ps1
       - name: Prepare standard runner toolchain
         shell: pwsh
