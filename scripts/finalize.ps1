@@ -21,6 +21,9 @@ git -C work/original checkout --detach FETCH_HEAD
 Set-Location $repositoryRoot
 rustup toolchain install 1.98.1 --profile minimal
 $originalSource = Join-Path $repositoryRoot 'work/original/work/source'
+if ((Get-Content "$originalSource/zed-source/crates/release_channel/src/lib.rs" -Raw) -notmatch '"ZedLink-Editor-Stable"') {
+    throw 'This older native build lacks the isolated Windows singleton. Rebuild from current main; repackaging cannot repair compiled code.'
+}
 foreach ($manifest in @("$originalSource/gateway/Cargo.toml", "$originalSource/zed-source/Cargo.toml")) {
     cargo +1.98.1 metadata --format-version 1 --filter-platform x86_64-pc-windows-msvc --manifest-path $manifest | Out-Null
 }

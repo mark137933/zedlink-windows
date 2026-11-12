@@ -298,3 +298,22 @@ index 6259194..2d2a342 100644
  }
  
  fn success(request_id: &str, result: Value) -> Value {
+diff --git a/crates/release_channel/src/lib.rs b/crates/release_channel/src/lib.rs
+index c79ca14..ae2f0e9 100644
+--- a/crates/release_channel/src/lib.rs
++++ b/crates/release_channel/src/lib.rs
+@@ -44,10 +44,10 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
+ #[cfg(target_os = "windows")]
+ pub fn app_identifier() -> &'static str {
+     match *RELEASE_CHANNEL {
+-        ReleaseChannel::Dev => "Zed-Editor-Dev",
+-        ReleaseChannel::Nightly => "Zed-Editor-Nightly",
+-        ReleaseChannel::Preview => "Zed-Editor-Preview",
+-        ReleaseChannel::Stable => "Zed-Editor-Stable",
++        ReleaseChannel::Dev => "ZedLink-Editor-Dev",
++        ReleaseChannel::Nightly => "ZedLink-Editor-Nightly",
++        ReleaseChannel::Preview => "ZedLink-Editor-Preview",
++        ReleaseChannel::Stable => "ZedLink-Editor-Stable",
+     }
+ }
+ 

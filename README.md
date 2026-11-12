@@ -13,6 +13,8 @@ This repository contains source overlays, a native Zed patch, and a manual cloud
 
 Windows uses per-user named pipes with an explicit owner/SYSTEM ACL and remote pipe clients disabled. Unix retains private local sockets. TLS, device pairing, explicit thread exposure, and native approval checks remain required. No new remote shell is added.
 
+The native Windows instance mutex and command pipe use a separate ZedLink identifier, so starting this build does not hand the project to an already running stock Zed. Use the launcher below to keep settings and conversation storage in its separate profile.
+
 ## Free cloud build
 
 Run **Actions → Windows build (free public runner) → Run workflow**. Leave **build_zed** enabled for the complete desktop build; disable it to validate the transport and gateway first.

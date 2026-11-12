@@ -35,17 +35,33 @@ if ($env:BUILD_ZED -eq 'true') {
     Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/terminal/v1.25.1912.0/LICENSE' -OutFile "$package/LICENSE-ConPTY.txt"
 }
 python scripts/collect-licenses.py "$package/dependency-notices" @manifests
+$zedVersion = 'NOT BUILT'
+$cliVersion = 'NOT BUILT'
+if ($env:BUILD_ZED -eq 'true') {
+    $zedVersion = (& "$package/Zed.exe" --version | Out-String).Trim()
+    $cliVersion = (& "$package/bin/zed.exe" --version | Out-String).Trim()
+    if (-not $zedVersion -or -not $cliVersion) { throw 'Executable version checks returned no output.' }
+    Write-Host $zedVersion
+    Write-Host $cliVersion
+}
+$expandedBytes = (Get-ChildItem -LiteralPath $package -Recurse -File | Measure-Object Length -Sum).Sum
+$metadata = @{ sourceCommit=$env:GITHUB_SHA; zedVersion=$zedVersion; cliVersion=$cliVersion; approximateExpandedBytes=$expandedBytes; nativeDesktopLaunch='NOT RUN'; physicalPhoneRoundtrip='NOT RUN' }
+$metadata | ConvertTo-Json | Set-Content "$package/build-validation.json"
 $label = if ($env:BUILD_ZED -eq 'true') { 'zedlink-windows-x64' } else { 'zedlink-gateway-windows-x64' }
 $archive = Join-Path $repositoryRoot "work/$label.zip"
 Compress-Archive -Path "$package/*" -DestinationPath $archive
 if ((Get-Item $archive).Length -ge 2GB) { throw 'Release asset exceeds the free release size limit.' }
+$downloadMiB = [math]::Round((Get-Item $archive).Length / 1MB, 1)
+$expandedMiB = [math]::Round($expandedBytes / 1MB, 1)
 $shaFile = "$archive.sha256"
 "$((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant())  $label.zip" | Set-Content $shaFile
 $notes = Join-Path $repositoryRoot 'work/release-notes.md'
 @"
 Unsigned experimental Windows build. Transport tests and compilation ran in this workflow.
+Download: $downloadMiB MiB. Expanded files: approximately $expandedMiB MiB before runtime caches.
+Native executable and CLI version checks run when the full desktop build is selected. The Windows singleton uses a separate ZedLink identity; use ZedLink.ps1 for its isolated settings profile.
 Physical-phone control of a native Zed conversation is not yet validated.
 Source revisions and reproducible patch: README.md and patches/zed-windows.patch at $env:GITHUB_SHA.
 Standard public Windows runner; no Actions artifacts or caches.
 "@ | Set-Content $notes
-gh release create "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" $archive $shaFile --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "$label (experimental)" --notes-file $notes
+gh release create "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" $archive $shaFile "$package/build-validation.json" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "$label (experimental)" --notes-file $notes
