@@ -38,10 +38,11 @@ python scripts/collect-licenses.py "$package/dependency-notices" @manifests
 $zedVersion = 'NOT BUILT'
 $cliVersion = 'NOT BUILT'
 if ($env:BUILD_ZED -eq 'true') {
-    $zedVersion = (& "$package/Zed.exe" --version | Out-String).Trim()
+    if (-not (Test-Path -LiteralPath "$package/Zed.exe" -PathType Leaf)) { throw 'Zed.exe was not found in the package directory.' }
+    $zedVersion = 'sha256:' + (Get-FileHash -LiteralPath "$package/Zed.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
     $cliVersion = (& "$package/bin/zed.exe" --version | Out-String).Trim()
-    if (-not $zedVersion -or -not $cliVersion) { throw 'Executable version checks returned no output.' }
-    Write-Host $zedVersion
+    if (-not $cliVersion) { throw 'CLI version check returned no output.' }
+    Write-Host "Zed.exe integrity: $zedVersion"
     Write-Host $cliVersion
 }
 $expandedBytes = (Get-ChildItem -LiteralPath $package -Recurse -File | Measure-Object Length -Sum).Sum
@@ -59,7 +60,7 @@ $notes = Join-Path $repositoryRoot 'work/release-notes.md'
 @"
 Unsigned experimental Windows build. Transport tests and compilation ran in this workflow.
 Download: $downloadMiB MiB. Expanded files: approximately $expandedMiB MiB before runtime caches.
-Native executable and CLI version checks run when the full desktop build is selected. The Windows singleton uses a separate ZedLink identity; use ZedLink.ps1 for its isolated settings profile.
+Native executable integrity (SHA-256) and CLI version checks run when the full desktop build is selected. The Windows singleton uses a separate ZedLink identity; use ZedLink.ps1 for its isolated settings profile.
 Physical-phone control of a native Zed conversation is not yet validated.
 Source revisions and reproducible patch: README.md and patches/zed-windows.patch at $env:GITHUB_SHA.
 Standard public Windows runner; no Actions artifacts or caches.
