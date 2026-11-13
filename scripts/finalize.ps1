@@ -35,7 +35,9 @@ Copy-Item "$originalSource/zed-source/assets/themes/LICENSES" "$package/THEME-LI
 Copy-Item "$originalSource/zed-source/assets/icons/LICENSES" "$package/ICON-LICENSES.txt"
 Copy-Item "$originalSource/zed-source/script/licenses/template.md.hbs" "$package/UPSTREAM-ADDITIONAL-NOTICES.txt"
 Invoke-WebRequest 'https://raw.githubusercontent.com/microsoft/terminal/v1.25.1912.0/LICENSE' -OutFile "$package/LICENSE-ConPTY.txt"
-& "$package/Zed.exe" --version
+if (-not (Test-Path -LiteralPath "$package/Zed.exe" -PathType Leaf)) { throw 'Zed.exe was not found in the package directory.' }
+$zedSha256 = (Get-FileHash -LiteralPath "$package/Zed.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "Zed.exe integrity: sha256:$zedSha256"
 & "$package/bin/zed.exe" --version
 $expandedBytes = (Get-ChildItem -LiteralPath $package -Recurse -File | Measure-Object Length -Sum).Sum
 $metadata = @{ binarySourceCommit=$buildCommit; packagingSourceCommit=$env:GITHUB_SHA; originalArchiveSha256=$checksum; approximateExpandedBytes=$expandedBytes; nativeDesktopLaunch='NOT RUN'; physicalPhoneRoundtrip='NOT RUN' }
@@ -51,7 +53,7 @@ $notes = Join-Path $repositoryRoot 'work/final-notes.md'
 Experimental Windows package with native Zed, gateway, isolated launcher, dependency notices and SHA-256 checksum.
 Download: $downloadMiB MiB. Expanded files: approximately $expandedMiB MiB before runtime caches.
 Native binaries are unchanged from $($env:BUILD_TAG), built from $buildCommit. Packaging source: $env:GITHUB_SHA.
-Transport/protocol/gateway tests and native compilation passed in the original build. Executable version checks ran during packaging.
+Transport/protocol/gateway tests and native compilation passed in the original build. Native binary integrity and CLI version checks ran during packaging.
 Interactive desktop launch and physical-phone shared-thread behavior still require verification. Do not replace a stock Zed installation.
 All build and packaging work ran on free standard Windows runners for this public repository. No local build dependencies are required.
 "@ | Set-Content $notes
